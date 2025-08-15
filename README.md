@@ -40,10 +40,8 @@ Focusing on **inference stage**, DeepSeek R1 uses **sparse MoE-Transformer archi
    
    2). Vector lookup via static embedding matrix:
       $$\mathbf{x_i} = \mathbf{W}_{embed}[ID,:] \in \mathbb{R}^{1 \times d}$$
-
-      1dsfsa
       
-      Yielding input matrix $\mathbf{X} = [\mathbf{x_1}, \mathbf{x_2}, \cdots, \mathbf{x_8}] \in \mathbb{R}^{n \times d}$
+   Yielding input matrix $\mathbf{X} = [\mathbf{x_1}, \mathbf{x_2}, \cdots, \mathbf{x_8}] \in \mathbb{R}^{n \times d}$
    *(Note: Original prompts can be reconstructed from embeddings via brute-force search)*  
    *(Question: Is positional encoding directly added to embeddings?)*
 
@@ -54,36 +52,36 @@ Focusing on **inference stage**, DeepSeek R1 uses **sparse MoE-Transformer archi
 For $N=64$ layers (each with MHSA and MoE-FFN), first layer operations:
 
 (1). **Norm**: Normalizes input vectors $\mathbf{x_i}$ via RMS scaling:
-    <div align="center">
+      <div align="center">
       $$\mathbf{X}_{n \times d} = \begin{bmatrix}
-   \mathbf{x_1} \\ \mathbf{x_2} \\ \vdots \\ \mathbf{x_n}
-   \end{bmatrix} = \begin{bmatrix}
-   x_{1,1} & \cdots & x_{1,d} \\
-   \vdots & \ddots & \vdots \\
-   x_{n,1} & \cdots & x_{n,d}
-   \end{bmatrix}$$
-   </div>
+      \mathbf{x_1} \\ \mathbf{x_2} \\ \vdots \\ \mathbf{x_n}\end{bmatrix} = \begin{bmatrix}
+      x_{1,1} & \cdots & x_{1,d} \\
+      \vdots & \ddots & \vdots \\
+      x_{n,1} & \cdots & x_{n,d}
+      \end{bmatrix}$$
+      </div>
 
 (2). **Self-Attention**: Computes Query/Key/Value matrices:
-   <div align="center">
-     $$\mathbf{Q} = \mathbf{XW}^Q, \mathbf{K} = \mathbf{XW}^K, \mathbf{V} = \mathbf{XW}^V \in \mathbb{R}^{n \times d_k}$$
-     </div>
+      <div align="center">
+      $$\mathbf{Q} = \mathbf{XW}^Q, \mathbf{K} = \mathbf{XW}^K, \mathbf{V} = \mathbf{XW}^V \in \mathbb{R}^{n \times d_k}$$
+      </div>
    where $\mathbf{W}^{Q/K/V} \in \mathbb{R}^{d \times d_k}$, $d_k = d/h$ ($h$=attention heads)
 
    *(Why cache K/V not Q? - KV Cache)*
 
    Attention weights:
    <div align="center">
-   $$\text{Attention}(\mathbf{Q,K,V}) = \text{Softmax}\left(\frac{\mathbf{QK}^T}{\sqrt{d_k}}\right)\mathbf{V}$$
+      $$\text{Attention}(\mathbf{Q,K,V}) = \text{Softmax}\left(\frac{\mathbf{QK}^T}{\sqrt{d_k}}\right)\mathbf{V}$$
    </div>
 
 (3). **Multi-Head Attention** (128 heads in DeepSeek R1):
-<div align="center">
-   $$head_i = \text{Attention}(\mathbf{Q}_i,\mathbf{K}_i,\mathbf{V}_i)$$
- </div>
-  <div align="center">
-   $$\text{MultiHead}(Q,K,V) = \text{Concat}(head_1,...,head_{128})\mathbf{W}^O$$
- </div>
+   <div align="center">
+      $$head_i = \text{Attention}(\mathbf{Q}_i,\mathbf{K}_i,\mathbf{V}_i)$$
+   </div>
+   <div align="center">
+      $$\text{MultiHead}(Q,K,V) = \text{Concat}(head_1,...,head_{128})\mathbf{W}^O$$
+   </div>
+ 
 (4). **Add**: Residual connection stabilizes training:
   <div align="center">
    $$\mathbf{x_i'} = \mathbf{x_i} + \text{MultiHead}_i(Q,K,V)$$
@@ -108,18 +106,19 @@ For $N=64$ layers (each with MHSA and MoE-FFN), first layer operations:
 ### 1.2.3 Autoregressive Decoding
 
 (1). **LM Head**: Projects to vocabulary space:
-      <div align="center">
-      $$\text{logits} = \mathbf{x_nW}_ {logits }, \quad \mathbf{W}_{logits} \in \mathbb{R}^{d \times V}$$
-      </div>
-      <div align="center">
-      $$p = \text{Softmax}(\text{logits})$$
-      </div>
+   <div align="center">
+   $$\text{logits} = \mathbf{x_nW}_ {logits }, \quad \mathbf{W}_{logits} \in \mathbb{R}^{d \times V}$$
+   </div>
+   
+   <div align="center">
+   $$p = \text{Softmax}(\text{logits})$$
+   </div>
 
 (2). **Sampling**: Defaults to Top-$p$ sampling. Alternatives:
    - Greedy search (highest probability token)
    - Top-$k$ sampling (renormalize top $k$ tokens)
 
-Example: Input ["What","'s","2","+","3","?"] → Output "5" → [...] → <EOS>
+Example: 原Token序列为[“请”,“计算”，“2”，“+”，“3”，“等于”，“多少”，“？”]，预测下一个Token为“5”，则更新Token序列为[“请”,“计算”，“2”，“+”，“3”，“等于”，“多少”，“？”，“5”]，并继续生成，直至预测下一个Token为<EOS>，则生成结束（即达到<EOS>的概率阈值，判定生成结束）。
 
 # 2. Model Architecture
 
